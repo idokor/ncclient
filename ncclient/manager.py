@@ -142,9 +142,27 @@ def connect_ioproc(*args, **kwds):
 
     return Manager(session, device_handler, **kwds)
 
+def connect_echo(*args, **kwds):
+    if "device_params" in kwds:
+        device_params = kwds["device_params"]
+        del kwds["device_params"]
+    else:
+        device_params = None
+
+    device_handler = make_device_handler(device_params)
+    device_handler.add_additional_ssh_connect_params(kwds)
+    global VENDOR_OPERATIONS
+    VENDOR_OPERATIONS.update(device_handler.add_additional_operations())
+    session = None
+
+    return Manager(session, device_handler, **kwds)
+
+
 
 def connect(*args, **kwds):
-    if "host" in kwds:
+    if "echo_mode" in kwds and kwds["echo_mode"]:
+        return connect_echo(*args, **kwds)
+    elif "host" in kwds:
         host = kwds["host"]
         device_params = kwds.get('device_params', {})
         if host == 'localhost' and device_params.get('name') == 'junos' \
@@ -200,11 +218,12 @@ class Manager(six.with_metaclass(OpExecutor, object)):
 
    # __metaclass__ = OpExecutor
 
-    def __init__(self, session, device_handler, timeout=30, *args, **kwargs):
+    def __init__(self, session, device_handler, timeout=30, echo_mode=False, *args, **kwargs):
         self._session = session
         self._async_mode = False
         self._timeout = timeout
         self._raise_mode = operations.RaiseMode.ALL
+        self._echo_mode = echo_mode
         self._device_handler = device_handler
 
     def __enter__(self):
@@ -224,12 +243,16 @@ class Manager(six.with_metaclass(OpExecutor, object)):
         assert(mode in (operations.RaiseMode.NONE, operations.RaiseMode.ERRORS, operations.RaiseMode.ALL))
         self._raise_mode = mode
 
+    def __set_echo_mode(self, mode):
+        self._echo_mode = mode
+
     def execute(self, cls, *args, **kwds):
         return cls(self._session,
                    device_handler=self._device_handler,
                    async=self._async_mode,
                    timeout=self._timeout,
-                   raise_mode=self._raise_mode).request(*args, **kwds)
+                   raise_mode=self._raise_mode,
+                   echo_mode=self._echo_mode).request(*args, **kwds)
 
     def locked(self, target):
         """Returns a context manager for a lock on a datastore, where
@@ -328,3 +351,8 @@ class Manager(six.with_metaclass(OpExecutor, object)):
     exceptions. Valid values are the constants defined in
     :class:`~ncclient.operations.RaiseMode`.
     The default value is :attr:`~ncclient.operations.RaiseMode.ALL`."""
+
+    echo_mode = property(fget=lambda self:self._echo_mode,
+                         fset=__set_echo_mode)
+    """Specify whether operations are sent to netconf server. commands return
+    the netconf message without sending it (`True`) or messages are sent (`False`) (the default)"""

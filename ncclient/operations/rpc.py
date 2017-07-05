@@ -264,14 +264,14 @@ class RPC(object):
     "By default :class:`RPCReply`. Subclasses can specify a :class:`RPCReply` subclass."
 
 
-    def __init__(self, session, device_handler, async=False, timeout=30, raise_mode=RaiseMode.NONE):
+    def __init__(self, session, device_handler, async=False, timeout=30, raise_mode=RaiseMode.NONE, echo_mode=False):
         """
         *session* is the :class:`~ncclient.transport.Session` instance
 
         *device_handler" is the :class:`~ncclient.devices.*.*DeviceHandler` instance
 
         *async* specifies whether the request is to be made asynchronously, see :attr:`is_async`
-
+q
         *timeout* is the timeout for a synchronous request, see :attr:`timeout`
 
         *raise_mode* specifies the exception raising mode, see :attr:`raise_mode`
@@ -285,9 +285,11 @@ class RPC(object):
         self._async = async
         self._timeout = timeout
         self._raise_mode = raise_mode
+        self._echo_mode = echo_mode
         self._id = uuid4().urn # Keeps things simple instead of having a class attr with running ID that has to be locked
-        self._listener = RPCReplyListener(session, device_handler)
-        self._listener.register(self._id, self)
+        if not self._echo_mode: #in case of echo mode no need for listener
+            self._listener = RPCReplyListener(session, device_handler)
+            self._listener.register(self._id, self)
         self._reply = None
         self._error = None
         self._event = Event()
@@ -313,6 +315,8 @@ class RPC(object):
         """
         logger.info('Requesting %r' % self.__class__.__name__)
         req = self._wrap(op)
+        if self._echo_mode:
+            return req
         self._session.send(req)
         if self._async:
             logger.debug('Async request, returning %r', self)
